@@ -16,18 +16,28 @@ std::ostream &operator<<(std::ostream &os, const std::valarray<T> &v)
 
 int main()
 {
+    struct
+    {
+        std::vector<std::string_view> ids;
+        std::valarray<float> values;
+    } packets[] = {
+        {{"a", "b"},
+         {1., 2.}},
+        {{"a", "c"},
+         {10., 20.}},
+        {{"a", "b", "c"},
+         {100., 20., 200.}},
+    };
+
     stream::Stream<float> s;
+    auto processor = stream::mean(s);
 
-    auto m = stream::mean(s);
-    m.reset_states(3);
-
-    std::cout << m.eval({1, 2, 3}) << std::endl;
-    std::cout << m.eval({2, 3, 4}) << std::endl;
-
-    m.stash_states(std::vector<std::string_view>{"a", "b", "c"});
-    std::cout << m.eval({3, 4, 5}) << std::endl;
-    std::cout << m.eval({3, 4, 5}) << std::endl;
-
-    m.restore_states(std::vector<std::string_view>{"a", "b", "c"});
-    std::cout << m.eval({3, 4, 5}) << std::endl;
+    for (const auto &packet : packets)
+    {
+        processor.reset_states(packet.ids.size());
+        processor.restore_states(packet.ids);
+        auto v = processor.eval(packet.values);
+        std::cout << v << std::endl;
+        processor.stash_states(packet.ids);
+    }
 }

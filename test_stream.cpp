@@ -56,6 +56,44 @@ TEST(VectorStreams, StashStates)
     EXPECT_TRUE((v == std::valarray<float>({(1. + 2. + 3.) / 3, (2. + 3. + 4.) / 3, (3. + 4. + 5.) / 3})).min());
 }
 
+TEST(VectorStreams, IrregularStashing)
+{
+    struct Packet
+    {
+        std::vector<std::string_view> ids;
+        std::valarray<float> values;
+    } packets[] = {
+        {{"a", "b"},
+         {1., 2.}},
+        {{"a", "c"},
+         {10., 20.}},
+        {{"a", "b", "c"},
+         {100., 20., 200.}},
+    };
+
+    stream::Stream<float> s;
+    auto processor = stream::mean(s);
+
+    processor.reset_states(packets[0].ids.size());
+    processor.restore_states(packets[0].ids);
+    auto v = processor.eval(packets[0].values);
+    EXPECT_TRUE((v == std::valarray<float>({1, 2})).min());
+    processor.stash_states(packets[0].ids);
+
+    processor.reset_states(packets[1].ids.size());
+    processor.restore_states(packets[1].ids);
+    v = processor.eval(packets[1].values);
+    EXPECT_TRUE((v == std::valarray<float>({(1. + 10.) / 2, 20.})).min());
+    processor.stash_states(packets[1].ids);
+
+    processor.reset_states(packets[2].ids.size());
+    processor.restore_states(packets[2].ids);
+    v = processor.eval(packets[2].values);
+    EXPECT_TRUE((v == std::valarray<float>({(1. + 10. + 100.) / 3, (2. + 20.) / 2, (20. + 200.) / 2})).min());
+    processor.stash_states(packets[2].ids);
+}
+
+// TODO: can i remove this? does the gtest library provide a default main()?
 int main(int argc, char **argv)
 {
     testing::InitGoogleTest(&argc, argv);
