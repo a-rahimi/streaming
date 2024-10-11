@@ -68,7 +68,7 @@ the packet:
 compiled_algo_multi_stream = Stream (stream_id, T), State[max_streams] → (Stream (stream_id, T), State[max_streams])
 ```
 
-This compiled function uses SIMD instructions to gather and modify the enetries
+This compiled function uses SIMD instructions to gather and modify the entries
 of the state vector. Since `algo` can be recursively defined in terms of other
 `algos`, `algo_multi_stream` will similarly depend recursively on other
 `algo_multi_stream`s and so too can `compiled_algo_multi_stream`s.
@@ -84,3 +84,23 @@ so in C++, using special scalar stub types that actually stand for vectors of
 scalars.  This way, `algo` can be applied to small vectors natively.  generating
 `compiled_algo_multi_stream`, the compiler calls `algo` on a gathered
 subset of the state vector, and scatters the results back to the state vector.
+
+In C++, the mean operator looks like this:
+
+```c++
+auto mean(InputExpr auto e)
+{
+    return divide(accumulate(e), count(e));
+}
+```
+
+The mean function doesn't explicitly maintain state. That work is relegated to
+`count` and `accumulate`. These are defined by two lambdas that are later
+wrapped into objects:
+
+```c++
+// count
+[](State &state, const typename InputExpr::Output &) { state += 1; return state; };
+// accumulate
+[](State &state, const typename InputExpr::Output &i) { state += i; return state; };
+```

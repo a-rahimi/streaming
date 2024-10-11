@@ -2,6 +2,11 @@
 #include <valarray>
 #include <vector>
 
+template <typename T>
+concept InputExpr = requires(T e) {
+    { e.eval(std::declval<typename T::InputType>()) } -> std::same_as<typename T::Output>;
+};
+
 namespace stream
 {
     template <typename T>
@@ -72,7 +77,7 @@ namespace stream
         }
     };
 
-    template <typename InputExpr>
+    template <InputExpr InputExpr>
     auto count(InputExpr e)
     {
         using State = vector<int>;
@@ -82,7 +87,7 @@ namespace stream
         return UnaryOperator<InputExpr, State, Output, func>{e};
     }
 
-    template <typename InputExpr>
+    template <InputExpr InputExpr>
     auto accumulate(InputExpr e)
     {
         using State = typename InputExpr::Output;
@@ -92,7 +97,7 @@ namespace stream
         return UnaryOperator<InputExpr, State, Output, func>{e};
     };
 
-    template <typename InputExpr1, typename InputExpr2, typename _Output, _Output (*func)(const typename InputExpr1::Output &, const typename InputExpr2::Output &)>
+    template <InputExpr InputExpr1, InputExpr InputExpr2, typename _Output, _Output (*func)(const typename InputExpr1::Output &, const typename InputExpr2::Output &)>
     struct StatelessBinaryOperator
     {
         using InputType = typename InputExpr1::InputType;
@@ -122,7 +127,7 @@ namespace stream
         }
     };
 
-    template <typename ExprNumerator, typename ExprDenominator>
+    template <InputExpr ExprNumerator, InputExpr ExprDenominator>
     auto divide(ExprNumerator num, ExprDenominator den)
     {
         using Output = ExprNumerator::Output;
@@ -131,8 +136,7 @@ namespace stream
         return StatelessBinaryOperator<ExprNumerator, ExprDenominator, Output, func>{num, den};
     };
 
-    template <typename InputExpr>
-    auto mean(InputExpr e)
+    auto mean(InputExpr auto e)
     {
         return divide(accumulate(e), count(e));
     }
