@@ -1,12 +1,9 @@
 #include <iostream>
-#include <initializer_list>
-#include <tuple>
-#include <type_traits>
+#include <ranges>
+#include <valarray>
 
-// For now, vector<T> is the same as T. But eventually, it'll be a group of
-// T's.
 template <typename T>
-using vector = T;
+using vector = std::valarray<T>;
 
 template <typename T>
 struct Stream
@@ -14,17 +11,15 @@ struct Stream
     using InputType = vector<T>;
     using Output = vector<T>;
 
-    static auto eval(const InputType &i)
-    {
-        return i;
-    }
+    auto eval(const InputType &i) { return i; }
+
+    void reset_states(size_t state_dim) {}
 };
 
-template <typename InputExpr, typename _State, typename _Output, _Output (*func)(_State &, const typename InputExpr::Output &)>
+template <typename InputExpr, typename State, typename _Output, _Output (*func)(State &, const typename InputExpr::Output &)>
 struct UnaryOperator
 {
     using InputType = typename InputExpr::InputType;
-    using State = _State;
     using Output = _Output;
 
     InputExpr input_expr;
@@ -34,24 +29,30 @@ struct UnaryOperator
     {
         return func(state, input_expr.eval(i));
     }
+
+    void reset_states(size_t state_dim)
+    {
+        state.resize(state_dim);
+        input_expr.reset_states(state_dim);
+    }
 };
 
 template <typename InputExpr>
-auto Count(InputExpr e)
+auto count(InputExpr e)
 {
     using State = vector<int>;
     using Output = State;
-    auto func = [](State &state, const typename InputExpr::Output &)
+    auto func = [](State &state, const typename InputExpr::Output &) -> Output
     { state += 1; return state; };
     return UnaryOperator<InputExpr, State, Output, func>{e};
 }
 
 template <typename InputExpr>
-auto Accumulate(InputExpr e)
+auto accumulate(InputExpr e)
 {
     using State = typename InputExpr::Output;
     using Output = State;
-    auto func = [](State &state, const typename InputExpr::Output &i)
+    auto func = [](State &state, const typename InputExpr::Output &i) -> Output
     { state += i; return state; };
     return UnaryOperator<InputExpr, State, Output, func>{e};
 };
@@ -69,21 +70,38 @@ struct StatelessBinaryOperator
     {
         return func(input_expr1.eval(i), input_expr2.eval(i));
     }
+    void reset_states(size_t state_dim)
+    {
+        input_expr1.reset_states(state_dim);
+        input_expr2.reset_states(state_dim);
+    }
 };
 
 template <typename ExprNumerator, typename ExprDenominator>
-auto Divide(ExprNumerator num, ExprDenominator den)
+auto divide(ExprNumerator num, ExprDenominator den)
 {
     using Output = ExprNumerator::Output;
-    auto func = [](const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator)
-    { return numerator / denominator; };
+    auto func = [](const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator) -> Output
+    { return numerator / (1. * denominator); };
     return StatelessBinaryOperator<ExprNumerator, ExprDenominator, Output, func>{num, den};
 };
 
 template <typename InputExpr>
 auto mean(InputExpr e)
 {
-    return Divide(Accumulate(e), Count(e));
+    return divide(accumulate(e), count(e));
+}
+
+template <typename T>
+std::ostream &operator<<(std::ostream &os, const std::valarray<T> &v)
+{
+    os << "[";
+    for (auto i : v)
+    {
+        os << i << ", ";
+    }
+    os << "]";
+    return os;
 }
 
 int main()
@@ -91,9 +109,9 @@ int main()
     Stream<float> stream;
 
     auto m = mean(stream);
+    m.reset_states(3);
 
-    std::cout << m.eval(1) << " expected: " << 1. / 1 << std::endl;
-    std::cout << m.eval(2) << " expected: " << (1. + 2.) / 2 << std::endl;
-    std::cout << m.eval(3) << " expected: " << (1. + 2. + 3.) / 3 << std::endl;
-    std::cout << m.eval(4) << " expected: " << (1. + 2. + 3. + 4.) / 4 << std::endl;
+    std::cout << m.eval({1, 2, 3}) << std::endl;
+    std::cout << m.eval({2, 3, 4}) << std::endl;
+    std::cout << m.eval({3, 4, 5}) << std::endl;
 }
