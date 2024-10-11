@@ -20,78 +20,64 @@ struct Stream
     }
 };
 
-template <typename Derived, typename InputExpr, typename _State>
+template <typename InputExpr, typename _State, typename _Output, _Output (*func)(_State &, const typename InputExpr::Output &)>
 struct UnaryOperator
 {
     using InputType = typename InputExpr::InputType;
     using State = _State;
+    using Output = _Output;
 
     InputExpr input_expr;
     State state;
 
-    auto eval(const InputType &i)
+    Output eval(const InputType &i)
     {
-        return Derived::apply(state, input_expr.eval(i));
+        return func(state, input_expr.eval(i));
     }
 };
 
-template <typename Derived, typename InputExpr1, typename InputExpr2>
+template <typename InputExpr>
+auto Count(InputExpr e)
+{
+    using State = vector<int>;
+    using Output = State;
+    auto func = [](State &state, const typename InputExpr::Output &)
+    { state += 1; return state; };
+    return UnaryOperator<InputExpr, State, Output, func>{e};
+}
+
+template <typename InputExpr>
+auto Accumulate(InputExpr e)
+{
+    using State = typename InputExpr::Output;
+    using Output = State;
+    auto func = [](State &state, const typename InputExpr::Output &i)
+    { state += i; return state; };
+    return UnaryOperator<InputExpr, State, Output, func>{e};
+};
+
+template <typename InputExpr1, typename InputExpr2, typename _Output, _Output (*func)(const typename InputExpr1::Output &, const typename InputExpr2::Output &)>
 struct StatelessBinaryOperator
 {
     using InputType = typename InputExpr1::InputType;
+    using Output = _Output;
 
     InputExpr1 input_expr1;
     InputExpr2 input_expr2;
 
     auto eval(const InputType &i)
     {
-        return Derived::apply(input_expr1.eval(i), input_expr2.eval(i));
-    }
-};
-
-template <typename InputExpr>
-struct Count : UnaryOperator<Count<InputExpr>, InputExpr, vector<int>>
-{
-    using Base = UnaryOperator<Count<InputExpr>, InputExpr, vector<int>>;
-
-    using Output = Base::State;
-
-    Count(InputExpr e) : Base{e} {}
-
-    static Output apply(Base::State &state, const typename InputExpr::Output &)
-    {
-        state += 1;
-        return state;
-    }
-};
-
-template <typename InputExpr>
-struct Accumulate : UnaryOperator<Accumulate<InputExpr>, InputExpr, typename InputExpr::Output>
-{
-    using Base = UnaryOperator<Accumulate<InputExpr>, InputExpr, typename InputExpr::Output>;
-    using Output = Base::State;
-
-    Accumulate(InputExpr e) : Base{e} {}
-
-    static Output apply(Base::State &state, const typename InputExpr::Output &i)
-    {
-        state += i;
-        return state;
+        return func(input_expr1.eval(i), input_expr2.eval(i));
     }
 };
 
 template <typename ExprNumerator, typename ExprDenominator>
-struct Divide : StatelessBinaryOperator<Divide<ExprNumerator, ExprDenominator>, ExprNumerator, ExprDenominator>
+auto Divide(ExprNumerator num, ExprDenominator den)
 {
-    using Base = StatelessBinaryOperator<Divide<ExprNumerator, ExprDenominator>, ExprNumerator, ExprDenominator>;
     using Output = ExprNumerator::Output;
-
-    Divide(ExprNumerator e1, ExprDenominator e2) : Base{e1, e2} {}
-
-    static Output apply(const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator)
-    {
-        return numerator / denominator;
-    }
+    auto func = [](const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator)
+    { return numerator / denominator; };
+    return StatelessBinaryOperator<ExprNumerator, ExprDenominator, Output, func>{num, den};
 };
 
 template <typename InputExpr>
