@@ -5,22 +5,27 @@ In our context, a stream is an ordered sequence of data points, and we want to
 apply the same algorithm to all the streams.
 
 
-## Use supplied algorithm
+## User-supplied algorithms operate on a single stream
 
-The user provides an algorithm that consume the head of a single stream a state,
-and returns an output and an updated state:
+Formally, a stream of elements of type T has type
+
+```
+Stream = T, Stream
+```
+
+The user provides an algorithm that consumes the head of a single stream of type
+T and a state, and returns an output and an updated state:
 
 ```
 algo = (T, State) → (S, State)
 ```
 
-The user-supplied algorithm can call as subroutines other algorithms that
-similarly operate on a stream. For syntactic convenience, however,  any mention
-of the state is elided from the call to subroutines. So for example, the
-user-defined function to compute the running mean of a steam might formally
-track the state of an accumulator and a counter, and pass these to subrountines,
-and would look quite verbose if it had to explicitly track the state of all the
-subroutines it calls:
+This algorithm can call as subroutines other algorithms that similarly operate
+on a stream and a state. For convenience, any mention of the state is elided
+from the call to subroutines. For example a function to compute the running mean
+of a steam might call helper algorithms to maintain a running sum and a running
+count of elements seen so far. If it had to maintain the state for these
+subroutines, it might look like this:
 
 ```
 mean(x, state):
@@ -29,7 +34,8 @@ mean(x, state):
   return (tally/cnt, state)
 ```
 
-Instead, we elide all the state variables and can just write
+Instead, we can ask the compiler to manage all these state passing and elide it
+from our code. This way, the running mean just looks like this:
 
 ```
 mean(x) = sum(x) / count(x)
@@ -39,19 +45,17 @@ The compiler recognizes that both sum and count need to maintain state, so it
 allocates a state variable for each of them, and automatically passes the state
 to each of them as needed.
 
-## Process multiple streams in parallel
+## Processing multiple streams in parallel
 
 Given a group of streams s1...sn, we could naively apply the user-defined
 algorithm to each stream sequentially. But our job is to compile the algorithm
 into one that can process multiple unsynchronized streams in parallel, using all
-the parallelism the machine offers. By "unsynchonized" I mean that one stream
-might receive a burst of updates while another input stream is stalled.  At each
-time step during runtime, the program receives a packet of data. This packet
-contains updates to any number of streams.
-
-Our job is to convert  a user-supplied function definedo on a single stream to
-one that  can operate on multiple streams in parallel, with the 
-signature:
+the parallelism the machine offers. By "unsynchonized" I mean one stream might
+receive a burst of updates while another stream is stalled.  At each time step
+during runtime, the compiled program will receive a packet of data that contains
+updates to any number of streams for that time step.  Our job is to convert  a
+user-supplied function defined on a single stream to one that  can operate on
+multiple streams in parallel, with the signature:
 
 ```
 algo_multi_stream = Stream (stream_id, T, State), algo → Stream (stream_id, T, State)
