@@ -2,13 +2,17 @@
 #include <valarray>
 #include <vector>
 
-template <typename T>
-concept InputExpr = requires(T e) {
-    { e.eval(std::declval<typename T::InputType>()) } -> std::same_as<typename T::Output>;
-};
-
 namespace stream
 {
+    template <typename T>
+    concept InputExpr = requires(T e) {
+        // an InputExpr::eval must have an InputType and an OutputType, and an
+        // apply() method that takes the former and returns the latter.
+        { e.eval(std::declval<typename T::InputType>()) } -> std::same_as<typename T::Output>;
+    };
+
+    // The vector type use throughout. For now, we use valarray, but xTensor is
+    // problem a better choice.
     template <typename T>
     using vector = std::valarray<T>;
 
@@ -77,24 +81,40 @@ namespace stream
         }
     };
 
+    template <typename T>
+    struct lambda_signature : public lambda_signature<decltype(&T::operator())>
+    {
+    };
+
+    template <typename ClassType, typename ReturnType, typename State, typename Input>
+    struct lambda_signature<ReturnType (ClassType::*)(State &, const Input &) const>
+    {
+        using return_type = ReturnType;
+        using state_type = State;
+        using input_type = Input;
+    };
+
+    template <InputExpr InputExpr, typename Function>
+    auto make_unary_operator(InputExpr e, Function func)
+    {
+        return UnaryOperator<InputExpr, typename lambda_signature<Function>::state_type, typename lambda_signature<Function>::return_type, func>{e};
+    }
+
     template <InputExpr InputExpr>
     auto count(InputExpr e)
     {
-        using State = vector<int>;
-        using Output = State;
-        auto func = [](State &state, const typename InputExpr::Output &) -> Output
-        { state += 1; return state; };
-        return UnaryOperator<InputExpr, State, Output, func>{e};
+        return make_unary_operator(
+            e,
+            [](vector<int> &state, const typename InputExpr::Output &) -> vector<int>
+            { state += 1; return state; });
     }
 
     template <InputExpr InputExpr>
     auto accumulate(InputExpr e)
     {
-        using State = typename InputExpr::Output;
-        using Output = State;
-        auto func = [](State &state, const typename InputExpr::Output &i) -> Output
-        { state += i; return state; };
-        return UnaryOperator<InputExpr, State, Output, func>{e};
+        return make_unary_operator(e,
+                                   [](typename InputExpr::Output &state, const typename InputExpr::Output &i)
+                                   { state += i; return state; });
     };
 
     template <InputExpr InputExpr1, InputExpr InputExpr2, typename _Output, _Output (*func)(const typename InputExpr1::Output &, const typename InputExpr2::Output &)>
@@ -127,13 +147,31 @@ namespace stream
         }
     };
 
+    template <typename T>
+    struct stateless_binary_lambda_signature : public stateless_binary_lambda_signature<decltype(&T::operator())>
+    {
+    };
+
+    template <typename ClassType, typename ReturnType, typename Input1, typename Input2>
+    struct stateless_binary_lambda_signature<ReturnType (ClassType::*)(const Input1 &, const Input2 &) const>
+    {
+        using return_type = ReturnType;
+        using input1_type = Input1;
+        using input2_type = Input2;
+    };
+
+    template <InputExpr Expr1, InputExpr Expr2, typename Function>
+    auto make_stateless_binary_operator(Expr1 e1, Expr2 e2, Function func)
+    {
+        return StatelessBinaryOperator<Expr1, Expr2, typename stateless_binary_lambda_signature<Function>::return_type, func>{e1, e2};
+    }
+
     template <InputExpr ExprNumerator, InputExpr ExprDenominator>
     auto divide(ExprNumerator num, ExprDenominator den)
     {
-        using Output = ExprNumerator::Output;
-        auto func = [](const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator) -> Output
-        { return numerator / (1. * denominator); };
-        return StatelessBinaryOperator<ExprNumerator, ExprDenominator, Output, func>{num, den};
+        return make_stateless_binary_operator(num, den,
+                                              [](const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator) -> typename ExprNumerator::Output
+                                              { return numerator / (1. * denominator); });
     };
 
     auto mean(InputExpr auto e)

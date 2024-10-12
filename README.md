@@ -95,8 +95,7 @@ auto mean(InputExpr auto e)
 ```
 
 The mean function doesn't explicitly maintain state. That work is relegated to
-`count` and `accumulate`. These are defined by two lambdas that are later
-wrapped into objects:
+`count` and `accumulate`. These are defined by two lambdas:
 
 ```c++
 // count
@@ -104,3 +103,6 @@ wrapped into objects:
 // accumulate
 [](State &state, const typename InputExpr::Output &i) { state += i; return state; };
 ```
+
+Some machinery outside these lambdas allocate the state and pass it to the
+lambdas as needed.
