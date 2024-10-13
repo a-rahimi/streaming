@@ -1,3 +1,4 @@
+#include <concepts>
 #include <map>
 #include <valarray>
 #include <vector>
@@ -29,15 +30,32 @@ namespace stream
         void restore_states(const std::vector<std::string_view> &ids) {}
     };
 
-    template <typename InputExpr, typename State, typename _Output, _Output (*func)(State &, const typename InputExpr::Output &)>
+    template <typename T>
+    struct lambda_signature : public lambda_signature<decltype(&T::operator())>
+    {
+    };
+
+    template <typename ClassType, typename ReturnType, typename State, typename Input>
+    struct lambda_signature<ReturnType (ClassType::*)(State &, const Input &) const>
+    {
+        using return_type = ReturnType;
+        using state_type = State;
+        using input_type = Input;
+    };
+
+    template <InputExpr InputExpr, typename Function>
     struct UnaryOperator
     {
         using InputType = typename InputExpr::InputType;
-        using Output = _Output;
+        using Output = lambda_signature<Function>::return_type;
+        using State = lambda_signature<Function>::state_type;
 
         InputExpr input_expr;
+        Function func;
         State state;
         std::map<std::string_view, typename State::value_type> state_storage;
+
+        UnaryOperator(InputExpr e, Function f) : input_expr(e), func(f) {}
 
         Output eval(const InputType &i)
         {
@@ -81,29 +99,10 @@ namespace stream
         }
     };
 
-    template <typename T>
-    struct lambda_signature : public lambda_signature<decltype(&T::operator())>
-    {
-    };
-
-    template <typename ClassType, typename ReturnType, typename State, typename Input>
-    struct lambda_signature<ReturnType (ClassType::*)(State &, const Input &) const>
-    {
-        using return_type = ReturnType;
-        using state_type = State;
-        using input_type = Input;
-    };
-
-    template <InputExpr InputExpr, typename Function>
-    auto make_unary_operator(InputExpr e, Function func)
-    {
-        return UnaryOperator<InputExpr, typename lambda_signature<Function>::state_type, typename lambda_signature<Function>::return_type, func>{e};
-    }
-
     template <InputExpr InputExpr>
     auto count(InputExpr e)
     {
-        return make_unary_operator(
+        return UnaryOperator(
             e,
             [](vector<int> &state, const typename InputExpr::Output &) -> vector<int>
             { state += 1; return state; });
@@ -112,19 +111,34 @@ namespace stream
     template <InputExpr InputExpr>
     auto accumulate(InputExpr e)
     {
-        return make_unary_operator(e,
-                                   [](typename InputExpr::Output &state, const typename InputExpr::Output &i)
-                                   { state += i; return state; });
+        return UnaryOperator(e,
+                             [](typename InputExpr::Output &state, const typename InputExpr::Output &i)
+                             { state += i; return state; });
     };
 
-    template <InputExpr InputExpr1, InputExpr InputExpr2, typename _Output, _Output (*func)(const typename InputExpr1::Output &, const typename InputExpr2::Output &)>
+    template <typename T>
+    struct stateless_binary_lambda_signature : public stateless_binary_lambda_signature<decltype(&T::operator())>
+    {
+    };
+
+    template <typename ClassType, typename ReturnType, typename Input1, typename Input2>
+    struct stateless_binary_lambda_signature<ReturnType (ClassType::*)(const Input1 &, const Input2 &) const>
+    {
+        using return_type = ReturnType;
+        using input1_type = Input1;
+        using input2_type = Input2;
+    };
+    template <InputExpr InputExpr1, InputExpr InputExpr2, typename Function>
     struct StatelessBinaryOperator
     {
         using InputType = typename InputExpr1::InputType;
-        using Output = _Output;
+        using Output = stateless_binary_lambda_signature<Function>::return_type;
 
         InputExpr1 input_expr1;
         InputExpr2 input_expr2;
+        Function func;
+
+        StatelessBinaryOperator(InputExpr1 e1, InputExpr2 e2, Function f) : input_expr1(e1), input_expr2(e2), func(f) {}
 
         auto eval(const InputType &i)
         {
@@ -147,31 +161,12 @@ namespace stream
         }
     };
 
-    template <typename T>
-    struct stateless_binary_lambda_signature : public stateless_binary_lambda_signature<decltype(&T::operator())>
-    {
-    };
-
-    template <typename ClassType, typename ReturnType, typename Input1, typename Input2>
-    struct stateless_binary_lambda_signature<ReturnType (ClassType::*)(const Input1 &, const Input2 &) const>
-    {
-        using return_type = ReturnType;
-        using input1_type = Input1;
-        using input2_type = Input2;
-    };
-
-    template <InputExpr Expr1, InputExpr Expr2, typename Function>
-    auto make_stateless_binary_operator(Expr1 e1, Expr2 e2, Function func)
-    {
-        return StatelessBinaryOperator<Expr1, Expr2, typename stateless_binary_lambda_signature<Function>::return_type, func>{e1, e2};
-    }
-
     template <InputExpr ExprNumerator, InputExpr ExprDenominator>
     auto divide(ExprNumerator num, ExprDenominator den)
     {
-        return make_stateless_binary_operator(num, den,
-                                              [](const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator) -> typename ExprNumerator::Output
-                                              { return numerator / (1. * denominator); });
+        return StatelessBinaryOperator(num, den,
+                                       [](const typename ExprNumerator::Output &numerator, const typename ExprDenominator::Output &denominator) -> typename ExprNumerator::Output
+                                       { return numerator / (1. * denominator); });
     };
 
     auto mean(InputExpr auto e)
